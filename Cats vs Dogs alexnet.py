@@ -1,0 +1,127 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Jan 12 04:22:51 2019
+
+@author: priya
+"""
+
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Jan 12 03:34:45 2019
+
+@author: priya
+"""
+import cv2                 
+import numpy as np         
+import os                  
+from random import shuffle 
+from tqdm import tqdm  
+import tensorflow as tf   
+TRAIN_DIR ='F:/dogs-cats-images/dog vs cat/dataset/training_set/train'
+TEST_DIR = 'F:/dogs-cats-images/dog vs cat/dataset/test_set/test'
+
+IMG_SIZE =227
+LR = 1e-3
+
+MODEL_NAME = 'dogsvscats-{}-{}.model'.format(LR, '2conv-basic')
+
+def label_img (img):
+    word_label=img.split('.')[0]
+    if word_label =='cat':return [1,0]
+    if word_label=='dog':return [0,1]
+
+def create_train_data():
+    training_data=[]
+    
+    for img in tqdm(os.listdir(TRAIN_DIR)):
+        label=label_img(img)
+        path=os.path.join(TRAIN_DIR,img)
+        path2=path.split('\\')
+        path=path2[0]+'/'+path2[1]
+        path2=str(path)
+        img=cv2.imread('{}'.format(path2),cv2.IMREAD_GRAYSCALE)
+        if img is not None:
+            img = cv2.resize(img, (IMG_SIZE,IMG_SIZE))
+            training_data.append([np.array(img), np.array(label)])
+        else:
+            print(" train image not loaded")
+    shuffle(training_data)
+    np.save('train_data.npy', training_data)
+    return training_data
+
+train_data=create_train_data()
+
+tf.reset_default_graph()
+
+def process_test_data():
+    testing_data = []
+    for img in tqdm(os.listdir(TEST_DIR)):
+        path = os.path.join(TEST_DIR,img)
+        path2=path.split('\\')
+        path=path2[0]+'/'+path2[1]
+        path2=str(path)
+        
+        
+        img_num = img.split('.')[0]
+        img=cv2.imread('{}'.format(path2),cv2.IMREAD_GRAYSCALE)
+        if img is not None:
+            img = cv2.resize(img, (IMG_SIZE,IMG_SIZE))
+            testing_data.append([np.array(img), img_num])
+        else:
+            print(" testing image not loaded")
+        
+    shuffle(testing_data)
+    np.save('test_data.npy', testing_data)
+    return testing_data
+        
+    shuffle(testing_data)
+    np.save('test_data.npy', testing_data)
+    return testing_data
+
+import tflearn
+from tflearn.layers.conv import conv_2d, max_pool_2d
+from tflearn.layers.core import input_data, dropout, fully_connected
+from tflearn.layers.estimator import regression
+from tflearn.layers.normalization import local_response_normalization
+
+
+
+network = input_data(shape=[None, 227, 227, 3])
+network = conv_2d(network, 96, 11, strides=4, activation='relu')
+network = max_pool_2d(network, 3, strides=2)
+network = local_response_normalization(network)
+network = conv_2d(network, 256, 5, activation='relu')
+network = max_pool_2d(network, 3, strides=2)
+network = local_response_normalization(network)
+network = conv_2d(network, 384, 3, activation='relu')
+network = conv_2d(network, 384, 3, activation='relu')
+network = conv_2d(network, 256, 3, activation='relu')
+network = max_pool_2d(network, 3, strides=2)
+network = local_response_normalization(network)
+network = fully_connected(network, 4096, activation='tanh')
+network = dropout(network, 0.5)
+network = fully_connected(network, 4096, activation='tanh')
+network = dropout(network, 0.5)
+network = fully_connected(network, 2, activation='softmax')
+network = regression(network, optimizer='momentum',
+                     loss='categorical_crossentropy',
+                     learning_rate=0.001)
+
+
+model = tflearn.DNN(network, tensorboard_dir='log',checkpoint_path='model_alexnet')
+
+if os.path.exists('{}.meta'.format(MODEL_NAME)):
+    model.load(MODEL_NAME)
+    print('model loaded!')
+
+train = train_data[:-500]
+test = train_data[-500:]
+
+X = np.array([i[0] for i in train])
+Y = [i[1] for i in train]
+X = X.reshape(-1, 227, 227, 3)
+test_x = np.array([i[0] for i in test])
+test_y = [i[1] for i in test]
+test_x=test_x
+model.fit(X,Y, n_epoch=1,snapshot_step=200, show_metric=True, run_id='alexnet')
+
